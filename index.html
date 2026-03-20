@@ -213,6 +213,23 @@
         font-size: 15px;
       }
     }
+
+    /* ボタン横並びレイアウト */
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin: 0 auto;
+    }
+
+    /* クイズボタンは紫色 */
+    #quizButton {
+      background: #7c3aed;
+    }
+    #quizButton:hover { background: #6d28d9; }
+    #quizButton:active { background: #5b21b6; }
+
   </style>
 </head>
 <body>
@@ -234,7 +251,11 @@
 
   <textarea id="message" placeholder="英語を入力…"></textarea>
   <br>
+
+  <div class="button-row">
   <button id="sendButton" onclick="sendMessage()">送信</button>
+  <button id="quizButton" onclick="startQuiz()">🎯 クイズを出す</button>
+  </div>
 
   <div id="chat" aria-live="polite"></div>
 
@@ -265,6 +286,41 @@
     function updateInputDesc() {
       const mode = document.querySelector('input[name="mode"]:checked')?.value || "correct";
       document.getElementById("inputDesc").textContent = MODE_DESCS[mode];
+
+      async function startQuiz() {
+      const sendButton = document.getElementById("sendButton");
+      const quizButton = document.getElementById("quizButton");
+
+      quizButton.disabled = true;
+      sendButton.disabled = true;
+
+      const pending = appendMessage("ai", "問題を作っています...");
+
+      try {
+        const res = await fetch("/api/quiz/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        const data = await res.json();
+        pending.remove();
+
+        currentQuiz = { ja: data.question };
+        appendQuizQuestion(data.question);
+
+        const textarea = document.getElementById("message");
+        textarea.value = "";
+        textarea.placeholder = "英語で答えを入力して「送信」してください…";
+        textarea.focus();
+      } catch (e) {
+        pending.remove();
+        appendMessage("error", "問題の生成に失敗しました。もう一度お試しください。");
+        currentQuiz = null;
+      } finally {
+        quizButton.disabled = false;
+        sendButton.disabled = false;
+      }
+    }
+
     }
 
     document.querySelectorAll('input[name="mode"]').forEach((el) => {

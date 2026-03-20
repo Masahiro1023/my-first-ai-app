@@ -38,6 +38,10 @@ const SYSTEM_MESSAGES = {
     "あなたは英語会話の練習相手です。ユーザーと英語で自然な会話を続けてください。ユーザーが英語で書いたら、主に英語で返答し、ときどき日本語でヒントを添えてください。文法のミスがあれば優しく直しつつ、会話を続けましょう。返答は短めに、長くなりすぎないようにしてください。会話の履歴と文脈は踏まえて回答してください。",
 };
 
+const QUIZ_SYSTEM_MESSAGE =
+  "あなたは英語学習コーチです。ユーザーが日本語の問題文を英語に訳した回答を採点してください。必ず次の形式で返答してください。\n\n【判定】正解 / 惜しい / 不正解\n\n【模範解答】自然な英語の正解例を1〜2文書く。\n\n【解説】どこが良かったか、または何を直すべきかを日本語で2〜3文で説明する。初心者にわかりやすく、やさしいトーンで。\n\n返答は読みやすく、長くなりすぎないようにしてください。";
+
+
 // 初心者向けにシンプルに: サーバーのメモリ上に履歴を保存します（再起動すると消えます）。
 // ※この実装だと全ユーザーで履歴が共有されます。必要なら後で「ユーザーごと」に拡張できます。
 const conversation = [];
@@ -115,6 +119,67 @@ app.post("/api/chat", async (req, res) => {
     });
   }
 });
+
+// ── 問題生成エンドポイント ──
+app.post("/api/quiz/generate", async (req, res) => {
+  try {
+    const prompt = [
+      "あなたは英語学習コーチです。",
+      "初心者〜中級者向けの「日本語→英語」翻訳クイズを1問だけ作ってください。",
+      "日常会話でよく使う自然な日本語の文を1文だけ出力してください。",
+      "余計な説明・記号・番号は一切つけず、日本語の文だけを返してください。",
+      "例：私は毎朝ジョギングをしています。",
+    ].join("\n");
+
+    const response = await client.responses.create({
+      model: "gpt-5.4",
+      input: prompt,
+    });
+
+    const question = (response.output_text ?? "").trim();
+    res.json({ question });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ question: "" });
+  }
+});
+
+// ── クイズ採点エンドポイント ──
+app.post("/api/quiz", async (req, res) => {
+  try {
+    const question = String(req.body?.question ?? "").trim();
+    const userAnswer = String(req.body?.userAnswer ?? "").trim();
+
+    if (!question || !userAnswer) {
+      return res.status(400).json({ reply: "問題または回答が空です。" });
+    }
+
+    const prompt = [
+      QUIZ_SYSTEM_MESSAGE,
+      "",
+      `問題（日本語）：${question}`,
+      `ユーザーの回答：${userAnswer}`,
+      "採点結果：",
+    ].join("\n");
+
+    const response = await client.responses.create({
+      model: "gpt-5.4",
+      input: prompt,
+    });
+
+    const replyText = response.output_text ?? "";
+    res.json({ reply: replyText });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ reply: "採点中にエラーが発生しました。" });
+  }
+});
+
+// ↓ 既存のコード（触らない）
+app.listen(port, () => {
+  console.log(`Server running on http://localhost:${port}`);
+});
+
 
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
