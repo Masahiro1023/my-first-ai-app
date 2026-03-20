@@ -1,6 +1,7 @@
 import express from "express";
 import OpenAI from "openai";
 import dotenv from "dotenv";
+import path from "path";
 
 dotenv.config();
 
@@ -12,7 +13,14 @@ const client = new OpenAI({
 });
 
 app.use(express.json());
-app.use(express.static("public"));
+
+// ルートにある静的ファイルを配信
+app.use(express.static("."));
+
+// トップページで index.html を返す
+app.get("/", (req, res) => {
+  res.sendFile(path.resolve("index.html"));
+});
 
 // 日本語を含むか簡易判定（ひらがな・カタカナ・漢字）
 function isJapanese(text) {
@@ -33,7 +41,7 @@ const SYSTEM_MESSAGES = {
 // 初心者向けにシンプルに: サーバーのメモリ上に履歴を保存します（再起動すると消えます）。
 // ※この実装だと全ユーザーで履歴が共有されます。必要なら後で「ユーザーごと」に拡張できます。
 const conversation = [];
-const MAX_TURNS = 20; // ユーザー↔AIの往復回数（多すぎると遅く/高コストになりやすい）
+const MAX_TURNS = 20;
 
 function buildPrompt(history, nextUserMessage, mode) {
   const systemMessage = SYSTEM_MESSAGES[mode] ?? SYSTEM_MESSAGES.correct;
@@ -58,19 +66,26 @@ function buildPrompt(history, nextUserMessage, mode) {
 app.post("/api/chat", async (req, res) => {
   try {
     const userMessage = String(req.body?.message ?? "").trim();
+
     if (!userMessage) {
       return res.status(400).json({ reply: "メッセージが空です。" });
     }
 
-    let mode = (() => {
+    const mode = (() => {
       const m = req.body?.mode;
       if (m === "explain" || m === "conversation") return m;
       return isJapanese(userMessage) ? "translate" : "correct";
     })();
 
     const clientHistory = Array.isArray(req.body?.history)
-      ? req.body.history.filter((t) => t && typeof t.user === "string" && typeof t.ai === "string")
+      ? req.body.history.filter(
+          (t) =>
+            t &&
+            typeof t.user === "string" &&
+            typeof t.ai === "string"
+        )
       : null;
+
     let history = clientHistory ?? conversation;
 
     if (history.length > MAX_TURNS) {
@@ -85,6 +100,7 @@ app.post("/api/chat", async (req, res) => {
     });
 
     const replyText = response.output_text ?? "";
+
     if (!clientHistory) {
       conversation.push({ user: userMessage, ai: replyText });
     }
