@@ -175,12 +175,6 @@ app.post("/api/quiz", async (req, res) => {
   }
 });
 
-// ↓ 既存のコード（触らない）
-app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
-});
-
-
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
 });

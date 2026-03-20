@@ -267,6 +267,8 @@
       conversation: "英語で自由に話してみましょう。会話の練習相手になります。"
     };
 
+    let currentQuiz = null;
+
     function loadHistory() {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
@@ -337,6 +339,52 @@
       return el;
     }
 
+    function appendQuizQuestion(jaText) {
+      const chat = document.getElementById("chat");
+      const el = document.createElement("div");
+      el.className = "msg quiz-question";
+      el.innerHTML = `
+        <div class="quiz-label">🎯 クイズ</div>
+        <div class="quiz-text">次の日本語を英語に訳してください：<br>「${jaText}」</div>
+      `;
+      chat.appendChild(el);
+      el.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+
+    async function startQuiz() {
+      const sendButton = document.getElementById("sendButton");
+      const quizButton = document.getElementById("quizButton");
+
+      quizButton.disabled = true;
+      sendButton.disabled = true;
+
+      const pending = appendMessage("ai", "問題を作っています...");
+
+      try {
+        const res = await fetch("/api/quiz/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        const data = await res.json();
+        pending.remove();
+
+        currentQuiz = { ja: data.question };
+        appendQuizQuestion(data.question);
+
+        const textarea = document.getElementById("message");
+        textarea.value = "";
+        textarea.placeholder = "英語で答えを入力して「送信」してください…";
+        textarea.focus();
+      } catch (e) {
+        pending.remove();
+        appendMessage("error", "問題の生成に失敗しました。もう一度お試しください。");
+        currentQuiz = null;
+      } finally {
+        quizButton.disabled = false;
+        sendButton.disabled = false;
+      }
+    }
+
     let messages = loadHistory();
     messages.forEach((turn) => {
       appendMessage("user", turn.user);
@@ -357,14 +405,27 @@
       const pending = appendMessage("ai", "考え中...");
 
       try {
-        const mode = document.querySelector('input[name="mode"]:checked')?.value || "correct";
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ message, mode, history: messages })
-        });
+        let res;
+        if (currentQuiz) {
+          // クイズモード：採点エンドポイントへ送信
+          res = await fetch("/api/quiz", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              question: currentQuiz.ja,
+              userAnswer: message,
+            }),
+          });
+          currentQuiz = null; // 採点後はリセット
+        } else {
+          // 通常モード：既存のチャットエンドポイントへ送信
+          const mode = document.querySelector('input[name="mode"]:checked')?.value || "correct";
+          res = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message, mode, history: messages }),
+          });
+        }
 
         const data = await res.json();
         const reply = data.reply ?? "";
